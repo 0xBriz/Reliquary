@@ -65,6 +65,8 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
      + `allocPoint` pool's individual allocation - ratio of the total allocation
      + `averageEntry` average entry time of each share, used to determine pool maturity
      + `curveAddress` math library used to curve emissions
+     +
+     + Note times are expressed in millis
     */
     struct PoolInfo {
         uint256 accOathPerShare;
@@ -373,8 +375,10 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
         uint256 positionId
     ) public {
         require(amount > 0, "depositing 0 amount");
+
         PoolInfo memory pool = updatePool(pid);
         _updateAverageEntry(pid, amount, Kind.DEPOSIT);
+
         PositionInfo storage position = positionInfo[pid][positionId];
         address to = ownerOf(positionId);
 
@@ -650,44 +654,50 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
     }
 
     /*
-     + @notice updates the average entry time of each token in the pool
+     + @notice Updates the average entry time of each token in the pool
      + @param pid The index of the pool. See `poolInfo`.
      + @param amount the amount of tokens being accounted for
      + @param kind the action being performed (deposit / withdrawal)
     */
-
+    // TODO tess3rac7 chore to use _name for all function params
     function _updateAverageEntry(
         uint256 pid,
         uint256 amount,
         Kind kind
     ) internal returns (bool) {
         PoolInfo storage pool = poolInfo[pid];
-        // _totalDeposits feels a bit misleading especially when we have "deposit" and
-        // "withdraw" being treated as first class citizens in the context of this contract
-        // like this is just LP token balance might as well inline
-        uint256 lpSupply = _totalDeposits(pid);
+        uint256 lpSupply = lpToken[pid].balanceOf(address(this));
+
+        // TODO what to do if there are 0 tokens?
+        // nothing bad will happen since this function is only called
+        // on deposit.. so even if pool is emptied out, next deposit will
+        // reset the averageEntry to timestamp
         if (lpSupply == 0) {
             pool.averageEntry = _timestamp();
             return true;
         } else {
             uint256 weight = (amount * 1e18) / lpSupply;
             uint256 maturity = _timestamp() - pool.averageEntry;
+
             if (kind == Kind.DEPOSIT) {
                 pool.averageEntry += ((maturity * weight) / 1e18);
             } else {
                 pool.averageEntry -= ((maturity * weight) / 1e18);
             }
+
             return true;
         }
     }
 
     /*
-     + @notice updates the user's entry time based on the weight of their deposit or withdrawal
+     + @notice Updates the user's entry time based on the weight of their deposit or withdrawal
      + @param pid The index of the pool. See `poolInfo`.
      + @param amount the amount of the deposit / withdrawal
      + @param positionId the NFT ID of the position being updated
     */
 
+    // TODO maybe pass in Kind? and update position's entry like averageEntry
+    // or not change entry for withdraw
     function _updateEntry(
         uint256 pid,
         uint256 amount,
@@ -704,19 +714,8 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
         return true;
     }
 
-    /*
-     + @notice returns the total deposits of the pool's token
-     + @param pid The index of the pool. See `poolInfo`.
-     + @return the amount of pool tokens held by the contract
-    */
-
-    function _totalDeposits(uint256 pid) internal view returns (uint256) {
-        return IERC20(lpToken[pid]).balanceOf(address(this));
-    }
-
     // Converting timestamp to miliseconds so precision isn't lost when we mutate the
     // user's entry time.
-
     function _timestamp() internal view returns (uint256) {
         return block.timestamp * 1000;
     }
