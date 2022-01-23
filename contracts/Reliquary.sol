@@ -310,10 +310,9 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
     /*
      + @notice Update reward variables of the given pool.
      + @param pid The index of the pool. See `poolInfo`.
-     + @return pool Returns the pool that was updated.
     */
-    function updatePool(uint256 pid) public returns (PoolInfo memory pool) {
-        pool = poolInfo[pid];
+    function updatePool(uint256 pid) public {
+        PoolInfo storage pool = poolInfo[pid];
         uint256 millisSinceReward = _timestamp() - pool.lastRewardTime;
 
         if (millisSinceReward != 0) {
@@ -329,7 +328,6 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
             }
 
             pool.lastRewardTime = _timestamp();
-            poolInfo[pid] = pool;
 
             emit LogUpdatePool(
                 pid,
@@ -376,8 +374,9 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
     ) public {
         require(amount > 0, "depositing 0 amount");
 
-        PoolInfo memory pool = updatePool(pid);
+        updatePool(pid);
         _updateAverageEntry(pid, amount, Kind.DEPOSIT);
+        PoolInfo storage pool = poolInfo[pid];
 
         PositionInfo storage position = positionInfo[pid][positionId];
         address to = ownerOf(positionId);
@@ -421,9 +420,10 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
             "you do not own this position"
         );
         require(amount > 0, "withdrawing 0 amount");
-        PoolInfo memory pool = updatePool(pid);
+        updatePool(pid);
         _updateAverageEntry(pid, amount, Kind.WITHDRAW);
         _updateEntry(pid, amount, positionId);
+        PoolInfo storage pool = poolInfo[pid];
         PositionInfo storage position = positionInfo[pid][positionId];
         address to = ownerOf(positionId);
 
@@ -452,7 +452,8 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
     function harvest(uint256 pid, uint256 positionId) public nonReentrant {
         address to = ownerOf(positionId);
         require(to == msg.sender, "you do not own this position");
-        PoolInfo memory pool = updatePool(pid);
+        updatePool(pid);
+        PoolInfo storage pool = poolInfo[pid];
         PositionInfo storage position = positionInfo[pid][positionId];
         int256 accumulatedOath = int256(
             (position.amount * pool.accOathPerShare) / ACC_OATH_PRECISION
@@ -503,8 +504,9 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
             "you do not own this position"
         );
         require(amount > 0, "withdrawing 0 amount");
-        PoolInfo memory pool = updatePool(pid);
+        updatePool(pid);
         _updateAverageEntry(pid, amount, Kind.WITHDRAW);
+        PoolInfo storage pool = poolInfo[pid];
         PositionInfo storage position = positionInfo[pid][positionId];
         address to = ownerOf(positionId);
         int256 accumulatedOath = int256(
