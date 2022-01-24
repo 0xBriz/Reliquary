@@ -106,7 +106,7 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
     /// @notice Address of the LP token for each MCV2 pool.
     IERC20[] public lpToken;
     /// @notice Address of each `IRewarder` contract in MCV2.
-    IRewarder[] public rewarder;
+    IRewarder[] public rewarders;
 
     /// @notice Info of each staked position
     mapping(uint256 => mapping(uint256 => PositionInfo)) public positionInfo;
@@ -202,7 +202,7 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
 
         totalAllocPoint += allocPoint;
         lpToken.push(_lpToken);
-        rewarder.push(_rewarder);
+        rewarders.push(_rewarder);
 
         poolInfo.push(
             PoolInfo({
@@ -250,7 +250,7 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
         poolInfo[_pid].allocPoint = _allocPoint;
 
         if (overwriteRewarder) {
-            rewarder[_pid] = _rewarder;
+            rewarders[_pid] = _rewarder;
         }
 
         if (overwriteCurve) {
@@ -260,7 +260,7 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
         emit LogPoolModified(
             _pid,
             _allocPoint,
-            overwriteRewarder ? _rewarder : rewarder[_pid],
+            overwriteRewarder ? _rewarder : rewarders[_pid],
             overwriteCurve ? _curve : poolInfo[_pid].curveAddress
         );
     }
@@ -372,34 +372,28 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
         uint256 amount,
         uint256 positionId
     ) public {
-        require(amount > 0, "depositing 0 amount");
-
+        require(amount != 0, "depositing 0 amount");
         updatePool(pid);
         _updateAverageEntry(pid, amount, Kind.DEPOSIT);
-        PoolInfo storage pool = poolInfo[pid];
+        _updateEntry(pid, amount, positionId);
 
+        PoolInfo storage pool = poolInfo[pid];
         PositionInfo storage position = positionInfo[pid][positionId];
         address to = ownerOf(positionId);
 
         // Effects
-        //position.amount = position.amount + amount;
-        //position.rewardDebt = position.rewardDebt + (int256(amount * pool.accOathPerShare / ACC_OATH_PRECISION));
+        position.amount += amount;
+        position.rewardDebt += int256(
+            (amount * pool.accOathPerShare) / ACC_OATH_PRECISION
+        );
 
         // Interactions
-        IRewarder _rewarder = rewarder[pid];
-        if (address(_rewarder) != address(0)) {
-            _rewarder.onOathReward(pid, to, to, 0, position.amount);
+        IRewarder rewarder = rewarders[pid];
+        if (address(rewarder) != address(0)) {
+            rewarder.onOathReward(pid, to, to, 0, position.amount);
         }
 
-        uint256 _before = lpToken[pid].balanceOf(address(this));
-        //_updateEntry(pid, amount, positionId);
         lpToken[pid].safeTransferFrom(msg.sender, address(this), amount);
-        uint256 _after = lpToken[pid].balanceOf(address(this)) - _before;
-        _updateEntry(pid, _after, positionId);
-        position.amount = position.amount + _after;
-        position.rewardDebt =
-            position.rewardDebt +
-            (int256((_after * pool.accOathPerShare) / ACC_OATH_PRECISION));
 
         emit Deposit(msg.sender, pid, amount, to, positionId);
     }
@@ -434,7 +428,7 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
         position.amount = position.amount - amount;
 
         // Interactions
-        IRewarder _rewarder = rewarder[pid];
+        IRewarder _rewarder = rewarders[pid];
         if (address(_rewarder) != address(0)) {
             _rewarder.onOathReward(pid, msg.sender, to, 0, position.amount);
         }
@@ -470,7 +464,7 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
             OATH.safeTransfer(to, _curvedOath);
         }
 
-        IRewarder _rewarder = rewarder[pid];
+        IRewarder _rewarder = rewarders[pid];
         if (address(_rewarder) != address(0)) {
             _rewarder.onOathReward(
                 pid,
@@ -524,7 +518,7 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
             int256((amount * pool.accOathPerShare) / ACC_OATH_PRECISION);
         position.amount = position.amount - amount;
 
-        IRewarder _rewarder = rewarder[pid];
+        IRewarder _rewarder = rewarders[pid];
         if (address(_rewarder) != address(0)) {
             _rewarder.onOathReward(
                 pid,
@@ -562,7 +556,7 @@ contract Reliquary is Relic, Ownable, Multicall, ReentrancyGuard {
         position.rewardDebt = 0;
         position.entry = 0;
 
-        IRewarder _rewarder = rewarder[pid];
+        IRewarder _rewarder = rewarders[pid];
         if (address(_rewarder) != address(0)) {
             _rewarder.onOathReward(pid, msg.sender, to, 0, 0);
         }

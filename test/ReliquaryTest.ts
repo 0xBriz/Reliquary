@@ -123,7 +123,7 @@ describe("Reliquary", function () {
   })
 
   describe("Harvest", function () {
-    it("Should give back the correct amount of RELIC", async function () {
+    it("Should give back the correct amount of OATH", async function () {
       await addPool(this.chef.address, 1, this.lp.address, zeroAddress, this.curve.address);
       await this.lp.approve(this.chef.address, ethers.utils.parseEther("1000"));
       await this.chef.createPositionAndDeposit(alice.address, 0, ethers.utils.parseEther("1"));
